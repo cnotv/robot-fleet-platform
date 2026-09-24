@@ -1,0 +1,104 @@
+# Override for running the platform on one VM behind the Traefik proxy
+# (compose.traefik.yaml). Layered on the root docker-compose.yml:
+#
+#   make vm-deploy         (reads deploy/vm/.env, targets DOCKER_HOST)
+#
+# Differences from local development: prebuilt images from the registry, no
+# published ports (Traefik routes by hostname), required secrets, memory caps
+# sized for a 4 GB machine, rotated logs, a smaller simulator.
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: 10m, max-file: "3" }
+
+x-image: &from-registry
+  build: !reset null
+  pull_policy: ${PULL_POLICY:-always}
+
+services:
+  redis:
+    ports: !reset []
+    mem_limit: 128m
+    logging: *logging
+    restart: unless-stopped
+
+  postgres:
+    ports: !reset []
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/vm/.env}
+    mem_limit: 256m
+    logging: *logging
+    restart: unless-stopped
+
+  mongodb:
+    ports: !reset []
+    # Default cache is half the RAM; 0.5 GB leaves room for other apps on the host.
+    command: [--wiredTigerCacheSizeGB, "0.5"]
+    mem_limit: 900m
+    logging: *logging
+    restart: unless-stopped
+
+  ingestion-service:
+    <<: *from-registry
+    image: ${IMAGE_PREFIX:-ghcr.io/cnotv/robot-fleet-platform}/ingestion-service:${IMAGE_TAG:-latest}
+    ports: !reset []
+    networks: [default, proxy]
+    mem_limit: 128m
+    logging: *logging
+    restart: unless-stopped
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.fleet-robots.rule: Host(`${ROBOTS_HOST:?set ROBOTS_HOST in deploy/vm/.env}`) && PathPrefix(`/ws/robot`)
+      # Robots have no credentials: only these networks may connect. The simulator bypasses Traefik.
+      traefik.http.routers.fleet-robots.middlewares: fleet-robots-allowlist
+      traefik.http.middlewares.fleet-robots-allowlist.ipallowlist.sourcerange: ${ROBOTS_ALLOWLIST:-127.0.0.1/32}
+      traefik.http.services.fleet-robots.loadbalancer.server.port: "8080"
+
+  orchestration-api:
+    <<: *from-registry
+    image: ${IMAGE_PREFIX:-ghcr.io/cnotv/robot-fleet-platform}/orchestration-api:${IMAGE_TAG:-latest}
+    ports: !reset []
+    networks: [default, proxy]
+    environment:
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in deploy/vm/.env}
+      DATABASE_URL: postgresql://cnotv:${POSTGRES_PASSWORD}@postgres:5432/fleet
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in deploy/vm/.env}
+      CORS_ORIGIN: https://${FLEET_HOST:?set FLEET_HOST in deploy/vm/.env}
+      TELEMETRY_RETENTION_DAYS: ${TELEMETRY_RETENTION_DAYS:-2}
+    mem_limit: 384m
+    logging: *logging
+    restart: unless-stopped
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.fleet-api.rule: Host(`${FLEET_HOST}`) && (PathPrefix(`/api`) || PathPrefix(`/ws/fleet`))
+      traefik.http.routers.fleet-api.middlewares: security-headers@docker
+      traefik.http.services.fleet-api.loadbalancer.server.port: "4000"
+
+  fleet-dashboard:
+    <<: *from-registry
+    image: ${IMAGE_PREFIX:-ghcr.io/cnotv/robot-fleet-platform}/fleet-dashboard:${IMAGE_TAG:-latest}
+    ports: !reset []
+    networks: [default, proxy]
+    environment:
+      # Same origin as the API behind Traefik.
+      PUBLIC_API_URL: ""
+    mem_limit: 256m
+    logging: *logging
+    restart: unless-stopped
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.fleet-app.rule: Host(`${FLEET_HOST}`)
+      traefik.http.routers.fleet-app.middlewares: security-headers@docker
+      traefik.http.services.fleet-app.loadbalancer.server.port: "3000"
+
+  simulator:
+    <<: *from-registry
+    image: ${IMAGE_PREFIX:-ghcr.io/cnotv/robot-fleet-platform}/simulator:${IMAGE_TAG:-latest}
+    command: [-url, ws://ingestion-service:8080, -n, "${SIMULATOR_ROBOTS:-200}", -interval, 1s]
+    mem_limit: 128m
+    logging: *logging
+    restart: unless-stopped
+
+networks:
+  proxy:
+    external: true

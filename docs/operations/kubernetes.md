@@ -70,7 +70,7 @@ make k8s-forward   # dashboard on http://localhost:3000, API on http://localhost
 make k8s-down      # delete the namespace, including database volumes
 ```
 
-The demo fleet file lives outside `deploy/`, so `make k8s-local` loads it as the `demo-fleet` ConfigMap, which the overlay mounts into the API.
+The demo fleet file is built into the API image; the local overlay turns seeding on with `DEMO_FLEET_FILE`.
 
 ## Production
 

@@ -45,13 +45,3 @@ patches:
       - op: replace
         path: /spec/replicas
         value: 1
-  # The demo fleet ConfigMap is created by `make k8s-local` from
-  # ingestion-service/cmd/simulator/hotel-fleet.json, which lives outside this directory.
-  - target: { kind: Deployment, name: orchestration-api }
-    patch: |
-      - op: add
-        path: /spec/template/spec/volumes/-
-        value: { name: demo-fleet, configMap: { name: demo-fleet } }
-      - op: add
-        path: /spec/template/spec/containers/0/volumeMounts/-
-        value: { name: demo-fleet, mountPath: /app/demo, readOnly: true }

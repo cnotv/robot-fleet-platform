@@ -17,6 +17,9 @@ COPY prisma ./prisma
 # postinstall runs prisma generate, so the client matches the schema in this image.
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
+# Demo fleet from the `fleet` build context (ingestion-service/cmd/simulator), seeded only
+# when DEMO_FLEET_FILE points at it. Baked in so remote hosts need no files from the repo.
+COPY --from=fleet hotel-fleet.json /app/demo/hotel-fleet.json
 USER node
 EXPOSE 4000
 # ponytail: db push syncs the schema on boot; switch to prisma migrate deploy once there are migrations to keep.

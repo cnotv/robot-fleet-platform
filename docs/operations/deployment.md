@@ -6,7 +6,8 @@ Each service ships a multi stage Dockerfile and the same images run everywhere:
 | --- | --- | --- |
 | Laptop | Docker Compose | [Running and testing](/operations/running) |
 | Kubernetes, local or production | Kustomize overlays in `deploy/k8s/` | [Kubernetes](/operations/kubernetes) |
-| One VM or a managed container platform | Compose or the platform's own service definitions | [README](https://github.com/cnotv/robot-fleet-platform#hosting-in-the-cloud) |
+| Any VM over SSH, behind Traefik | Compose override in `deploy/vm/`, `make vm-deploy` | [Any VM with Traefik](/operations/vm) |
+| A managed container platform | The platform's own service definitions | [README](https://github.com/cnotv/robot-fleet-platform#hosting-in-the-cloud) |
 
 ```mermaid
 flowchart LR

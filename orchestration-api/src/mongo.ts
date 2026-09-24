@@ -2,7 +2,8 @@ import mongoose, { Schema } from 'mongoose';
 import type { SampleEvent } from './live.js';
 import { ROBOT_STATUSES, type RobotStatus } from './telemetry.js';
 
-const TELEMETRY_RETENTION_SECONDS = 7 * 24 * 60 * 60;
+// Applies when the collection is first created; changing it later needs a collMod (see docs/operations/vm.md).
+const TELEMETRY_RETENTION_SECONDS = Number(process.env.TELEMETRY_RETENTION_DAYS ?? 7) * 24 * 60 * 60;
 
 /** Telemetry buffer. Documents expire automatically after the retention window. */
 export const TelemetrySample = mongoose.model(

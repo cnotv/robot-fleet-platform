@@ -98,69 +98,27 @@ The same Docker images run everywhere. Pick one of the three paths below.
 
 > **Before exposing anything:** the robot endpoint has no authentication by design. Anyone who can reach it can report telemetry for any robot id. Keep it on a private network, behind a VPN, an IP allow list or mTLS at the proxy.
 
-### Option A: one virtual machine with Docker Compose
+### Option A: any VM over SSH, behind Traefik
 
-Simplest path, and enough for the 1,000 robot target. Works on any provider that sells a Linux VM (Hetzner, DigitalOcean, AWS EC2, Google Compute Engine, Azure VM).
+Simplest path, and enough for the 1,000 robot target: one VM with 2 vCPU and 4 GB on any cloud. Docker deploys to it over SSH from your machine; Traefik routes by container labels and issues certificates.
 
-1. Create a VM with at least 2 vCPU and 4 GB RAM running Ubuntu 24.04, and install Docker Engine with the compose plugin:
+```bash
+cp deploy/vm/.env.example deploy/vm/.env   # set DOCKER_HOST=ssh://root@<ip>, hostnames, secrets
+```
 
-   ```bash
-   curl -fsSL https://get.docker.com | sh
-   ```
+```bash
+make vm-bootstrap   # once: Docker and swap on the VM
+```
 
-2. Point three DNS `A` records at the VM: `app.example.com`, `api.example.com`, `robots.example.com`.
+```bash
+make vm-proxy       # the shared Traefik proxy
+```
 
-3. Allow only ports 22, 80 and 443 in the provider firewall. Compose binds every service to `127.0.0.1`, so databases stay private.
+```bash
+make vm-deploy      # the platform, from the images CI publishes
+```
 
-4. Clone and configure:
-
-   ```bash
-   git clone https://github.com/cnotv/robot-fleet-platform.git && cd robot-fleet-platform
-   ```
-
-   ```bash
-   cp .env.example .env
-   ```
-
-   Fill `.env`: a random `JWT_SECRET` (`openssl rand -hex 32`), `POSTGRES_PASSWORD`, `ADMIN_PASSWORD`, and set `PUBLIC_DASHBOARD_URL=https://app.example.com` and `PUBLIC_API_URL=https://api.example.com`.
-
-5. Build and start:
-
-   ```bash
-   docker compose --profile apps up -d --build
-   ```
-
-6. Install [Caddy](https://caddyserver.com/docs/install) on the host for automatic TLS and WebSocket proxying, and put this in `/etc/caddy/Caddyfile`:
-
-   ```
-   app.example.com {
-       reverse_proxy 127.0.0.1:3000
-   }
-   api.example.com {
-       reverse_proxy 127.0.0.1:4000
-   }
-   robots.example.com {
-       reverse_proxy 127.0.0.1:8080
-   }
-   ```
-
-   ```bash
-   sudo systemctl reload caddy
-   ```
-
-7. Robots connect to `wss://robots.example.com/ws/robot/{id}`. The dashboard is at `https://app.example.com`. To load test from your laptop:
-
-   ```bash
-   cd ingestion-service && go run ./cmd/simulator -url wss://robots.example.com
-   ```
-
-8. Back up PostgreSQL on a schedule:
-
-   ```bash
-   docker compose exec -T postgres pg_dump -U cnotv fleet | gzip > fleet-$(date +%F).sql.gz
-   ```
-
-To update, `git pull` and run step 5 again.
+Point DNS for your fleet, robots and Traefik hostnames at the VM first. The full guide, including moving existing containers off Nginx Proxy Manager, is [Any VM with Traefik](https://cnotv.github.io/robot-fleet-platform/operations/vm).
 
 ### Option B: managed databases and container platform
 
@@ -183,7 +141,7 @@ Use this when you want the provider to run the databases and restart containers 
    ```
 
    ```bash
-   docker build --target runtime -t $REGISTRY/orchestration-api:1.0.0 orchestration-api
+   docker build --target runtime --build-context fleet=ingestion-service/cmd/simulator -t $REGISTRY/orchestration-api:1.0.0 orchestration-api
    ```
 
    ```bash

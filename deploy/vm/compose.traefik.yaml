@@ -1,0 +1,85 @@
+# Shared Traefik proxy for one Docker host. Deploy once per server; every app on
+# the host joins the `proxy` network and declares its routes as container labels,
+# so no proxy configuration is edited per service.
+#
+#   make vm-proxy          (reads deploy/vm/.env, targets DOCKER_HOST)
+#
+# Everything is configured by flags and labels, with no files mounted from this
+# repository, so it deploys to a remote host over `DOCKER_HOST=ssh://...`.
+name: proxy
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: 10m, max-file: "3" }
+
+services:
+  # Traefik reads container labels through this proxy instead of the raw Docker
+  # socket, so a Traefik compromise cannot start containers or read secrets.
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      NETWORKS: 1
+      SERVICES: 1
+      TASKS: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [socket]
+    mem_limit: 64m
+    logging: *logging
+
+  traefik:
+    image: traefik:v3.7
+    restart: unless-stopped
+    depends_on: [socket-proxy]
+    command:
+      - --providers.docker.endpoint=tcp://socket-proxy:2375
+      - --providers.docker.exposedByDefault=false
+      - --providers.docker.network=proxy
+      - --entryPoints.web.address=:80
+      - --entryPoints.web.http.redirections.entryPoint.to=websecure
+      - --entryPoints.web.http.redirections.entryPoint.scheme=https
+      - --entryPoints.websecure.address=:443
+      - --entryPoints.websecure.http.tls.certResolver=letsencrypt
+      # 0 disables Traefik's 60s default, which would drop every WebSocket each minute.
+      - --entryPoints.websecure.transport.respondingTimeouts.readTimeout=0
+      - --certificatesResolvers.letsencrypt.acme.email=${ACME_EMAIL:?set ACME_EMAIL in deploy/vm/.env}
+      - --certificatesResolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesResolvers.letsencrypt.acme.httpChallenge.entryPoint=web
+      - --api.dashboard=true
+      - --ping=true
+      - --log.level=INFO
+      # Access logs stay off: the fleet dashboard socket carries its JWT in the query string.
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - letsencrypt:/letsencrypt
+    networks: [proxy, socket]
+    healthcheck:
+      test: [CMD, traefik, healthcheck, --ping]
+      interval: 10s
+    mem_limit: 128m
+    logging: *logging
+    labels:
+      traefik.enable: "true"
+      # Traefik dashboard: every route, service and middleware on this host.
+      traefik.http.routers.traefik.rule: Host(`${TRAEFIK_HOST:?set TRAEFIK_HOST in deploy/vm/.env}`)
+      traefik.http.routers.traefik.service: api@internal
+      traefik.http.routers.traefik.middlewares: traefik-auth,security-headers
+      traefik.http.middlewares.traefik-auth.basicauth.users: ${TRAEFIK_AUTH:?set TRAEFIK_AUTH in deploy/vm/.env}
+      # Shared middleware; any app can use it as security-headers@docker.
+      traefik.http.middlewares.security-headers.headers.stsSeconds: "31536000"
+      traefik.http.middlewares.security-headers.headers.contentTypeNosniff: "true"
+      traefik.http.middlewares.security-headers.headers.frameDeny: "true"
+      traefik.http.middlewares.security-headers.headers.referrerPolicy: strict-origin-when-cross-origin
+
+networks:
+  proxy:
+    name: proxy
+  socket:
+    internal: true
+
+volumes:
+  letsencrypt:
