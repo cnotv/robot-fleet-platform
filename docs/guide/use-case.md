@@ -2,7 +2,7 @@
 
 The demo data models a hospitality operator: one hotel group running a mixed fleet of service robots in 20 hotels on five continents. Hospitality is a common case for robot fleet orchestration: robots from several vendors share lobbies, corridors and elevators, and operations teams need one view across every property.
 
-The same file drives both the simulator and the database seed: [`ingestion-service/cmd/simulator/hotel-fleet.json`](https://github.com/cnotv/robot-fleet-platform/blob/main/ingestion-service/cmd/simulator/hotel-fleet.json).
+[How the simulation works](/guide/simulation) explains how this fleet was designed and generated. The same file drives both the simulator and the database seed: [`ingestion-service/cmd/simulator/hotel-fleet.json`](https://github.com/cnotv/robot-fleet-platform/blob/main/ingestion-service/cmd/simulator/hotel-fleet.json).
 
 ## Hotels
 

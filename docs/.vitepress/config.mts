@@ -23,6 +23,7 @@ export default withMermaid(
           text: 'Guide',
           items: [
             { text: 'Customer use case', link: '/guide/use-case' },
+            { text: 'How the simulation works', link: '/guide/simulation' },
             { text: 'Using the dashboard', link: '/guide/dashboard' },
           ],
         },

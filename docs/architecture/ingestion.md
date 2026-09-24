@@ -13,7 +13,7 @@ Go, `net/http`, `gorilla/websocket`, `go-redis`. Source: `ingestion-service/`.
 
 ## Simulator
 
-`cmd/simulator` embeds `hotel-fleet.json` and opens one socket per robot. See [Customer use case](/guide/use-case) for the behaviour it models.
+`cmd/simulator` embeds `hotel-fleet.json` and opens one socket per robot. See [How the simulation works](/guide/simulation) for the design, constants and flags.
 
 ```sh
 go run ./cmd/simulator -url ws://localhost:8080 -n 1000 -interval 1s
