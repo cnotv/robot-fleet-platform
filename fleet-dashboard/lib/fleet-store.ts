@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import {
   api,
-  FLEET_SOCKET_URL,
+  fleetSocketUrl,
   tokenRole,
   UnauthorizedError,
   type RobotInfo,
@@ -84,7 +84,7 @@ export const useFleet = create<FleetStore>()((set, get) => {
       const flushTimer = setInterval(flush, FLUSH_MS);
 
       const open = () => {
-        socket = new WebSocket(`${FLEET_SOCKET_URL}?token=${encodeURIComponent(token)}`);
+        socket = new WebSocket(`${fleetSocketUrl()}?token=${encodeURIComponent(token)}`);
         socket.onopen = () => set({ connection: 'open' });
         socket.onmessage = (event: MessageEvent<string>) => {
           buffer.push(...(JSON.parse(event.data) as RobotState[]));

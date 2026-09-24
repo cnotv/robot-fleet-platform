@@ -1,0 +1,23 @@
+# Environment neutral manifests. Deploy an overlay, not this directory:
+#   overlays/local        in cluster databases, simulator, dev secrets
+#   overlays/production   managed databases, registry images, TLS, autoscaling
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: robot-fleet
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: robot-fleet-platform
+resources:
+  - namespace.yaml
+  - ingestion-service.yaml
+  - orchestration-api.yaml
+  - fleet-dashboard.yaml
+  - ingress.yaml
+configMapGenerator:
+  - name: fleet-config
+    literals:
+      # Empty: the ingress serves dashboard and API on one origin.
+      - PUBLIC_API_URL=
+      - CORS_ORIGIN=
+# Image names are short placeholders (ingestion-service, orchestration-api,
+# fleet-dashboard); each overlay maps them to real images with `images:`.

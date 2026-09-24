@@ -1,6 +1,12 @@
 # Deployment
 
-Each service ships a multi stage Dockerfile; the same images run locally through Docker Compose and in the cloud. Step by step hosting instructions for a single VM and for managed cloud services are in the [README](https://github.com/cnotv/robot-fleet-platform#hosting-in-the-cloud).
+Each service ships a multi stage Dockerfile and the same images run everywhere:
+
+| Target | Wiring | Guide |
+| --- | --- | --- |
+| Laptop | Docker Compose | [Running and testing](/operations/running) |
+| Kubernetes, local or production | Kustomize overlays in `deploy/k8s/` | [Kubernetes](/operations/kubernetes) |
+| One VM or a managed container platform | Compose or the platform's own service definitions | [README](https://github.com/cnotv/robot-fleet-platform#hosting-in-the-cloud) |
 
 ```mermaid
 flowchart LR

@@ -80,9 +80,9 @@ services:
     build:
       context: ./fleet-dashboard
       target: runtime
-      args:
-        # Baked into the client bundle, so it must be reachable from the browser.
-        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:4000}
+    environment:
+      # Read at request time. Leave empty when an ingress serves API and dashboard on one origin.
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:4000}
     ports: ["${BIND_ADDR:-127.0.0.1}:3000:3000"]
     depends_on: [orchestration-api]
 

@@ -1,0 +1,43 @@
+# Two ingresses so the robot endpoint can get its own host and access rules.
+# Long timeouts keep WebSockets open; clients reconnect when one is recycled.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fleet-app
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service: { name: orchestration-api, port: { name: http } }
+          - path: /ws/fleet
+            pathType: Prefix
+            backend:
+              service: { name: orchestration-api, port: { name: http } }
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: fleet-dashboard, port: { name: http } }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fleet-robots
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /ws/robot
+            pathType: Prefix
+            backend:
+              service: { name: ingestion-service, port: { name: http } }

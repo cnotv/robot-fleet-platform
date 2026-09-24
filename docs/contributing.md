@@ -37,6 +37,7 @@ Update the docs in the same change as the code. This table says which page a cha
 | `hotel-fleet.json` or simulator behaviour | `guide/use-case.md` |
 | A dashboard page, filter or report | `guide/dashboard.md`, `architecture/dashboard.md` |
 | Deployment topology or scaling | `operations/deployment.md`, README |
+| A port, probe, environment variable or resource in a service | `deploy/k8s/base/`, `docker-compose.yml`, `operations/kubernetes.md` |
 | A shortcut marked `ponytail:` in code | `operations/limits.md` |
 
 ## Style

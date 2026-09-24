@@ -49,6 +49,7 @@ export default withMermaid(
           text: 'Operations',
           items: [
             { text: 'Deployment', link: '/operations/deployment' },
+            { text: 'Kubernetes', link: '/operations/kubernetes' },
             { text: 'Security model', link: '/operations/security' },
             { text: 'Running and testing', link: '/operations/running' },
             { text: 'Known limits', link: '/operations/limits' },

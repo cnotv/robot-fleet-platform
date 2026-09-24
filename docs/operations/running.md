@@ -3,8 +3,11 @@
 ## Everything in containers
 
 ```sh
-docker compose --profile apps --profile sim up --build
+make up      # same as: docker compose --profile apps --profile sim up --build -d
+make test    # unit tests and type checks for every service
 ```
+
+The same images also run on a local Kubernetes cluster with `make k8s-local`; see [Kubernetes](/operations/kubernetes).
 
 Seeds 20 hotels and 1,000 robots on first start and runs the simulator against them. The dashboard is at http://localhost:3000.
 

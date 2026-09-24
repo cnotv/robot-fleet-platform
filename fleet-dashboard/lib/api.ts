@@ -62,8 +62,17 @@ export interface ActivityRow {
   avgBattery: number | null;
 }
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
-export const FLEET_SOCKET_URL = `${API_URL.replace(/^http/, 'ws')}/ws/fleet`;
+/**
+ * API base URL from the PUBLIC_API_URL runtime variable (see app/layout.tsx).
+ * Empty means same origin, as behind the Kubernetes ingress.
+ */
+function apiUrl(): string {
+  return typeof document === 'undefined' ? '' : (document.body.dataset.apiUrl ?? '');
+}
+
+export function fleetSocketUrl(): string {
+  return `${(apiUrl() || window.location.origin).replace(/^http/, 'ws')}/ws/fleet`;
+}
 
 const TOKEN_KEY = 'fleet.token';
 
@@ -89,7 +98,7 @@ export function tokenRole(token: string): Role {
 }
 
 async function request<T>(path: string, token: string | null, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(`${apiUrl()}${path}`, {
     ...init,
     headers: {
       ...(init.body ? { 'content-type': 'application/json' } : {}),

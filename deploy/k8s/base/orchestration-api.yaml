@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestration-api
+spec:
+  # Exactly one replica: every replica subscribes to the telemetry channel and
+  # would write each sample to MongoDB again. Recreate avoids two during a rollout.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orchestration-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: orchestration-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # Schema sync runs once per rollout, before the API starts.
+        - name: schema
+          image: orchestration-api
+          imagePullPolicy: IfNotPresent
+          command: [node_modules/.bin/prisma, db, push, --skip-generate]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: fleet-secrets, key: DATABASE_URL }
+            - { name: HOME, value: /tmp }
+            - { name: CHECKPOINT_DISABLE, value: "1" }
+          securityContext: &hardened
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      containers:
+        - name: api
+          image: orchestration-api
+          imagePullPolicy: IfNotPresent
+          command: [node, dist/index.js]
+          ports:
+            - name: http
+              containerPort: 4000
+          # fleet-secrets: DATABASE_URL, MONGO_URL, REDIS_URL, JWT_SECRET, and optionally ADMIN_EMAIL, ADMIN_PASSWORD.
+          envFrom:
+            - configMapRef: { name: fleet-config }
+            - secretRef: { name: fleet-secrets }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 250m, memory: 256Mi }
+            limits: { memory: 512Mi }
+          securityContext: *hardened
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orchestration-api
+spec:
+  selector:
+    app.kubernetes.io/name: orchestration-api
+  ports:
+    - name: http
+      port: 4000
+      targetPort: http

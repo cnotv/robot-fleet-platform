@@ -19,6 +19,7 @@ flowchart TB
 | `ingestion-service/` | Accept robot sockets, validate and throttle packets, publish to Redis. Also holds the fleet simulator. | 8080 |
 | `orchestration-api/` | Authentication, inventory and robot CRUD, live state cache, telemetry history, reports, dashboard fan out. | 4000 |
 | `fleet-dashboard/` | Map, filters, reports, robot management. | 3000 |
+| `deploy/k8s/` | Kustomize base and overlays for Kubernetes. | |
 | `docs/` | This site. | |
 
 ## Where each kind of data lives

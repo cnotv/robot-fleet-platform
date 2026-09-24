@@ -29,8 +29,10 @@ robot ──ws──▶ ingestion-service ──pub──▶ Redis channel robot
 Everything in containers, with 20 hotels and 1,000 simulated robots:
 
 ```bash
-docker compose --profile apps --profile sim up --build
+make up
 ```
+
+`make up` runs `docker compose --profile apps --profile sim up --build -d`; `make test` runs every test suite. The same images also run on Kubernetes: `make k8s-local` deploys them to a local cluster (see [Kubernetes](https://cnotv.github.io/robot-fleet-platform/operations/kubernetes)).
 
 Open http://localhost:3000 and sign in with `` / `cnotv-admin`. On first boot with an empty database the API creates this admin and seeds the hotels and robots from `ingestion-service/cmd/simulator/hotel-fleet.json`. Override it with `ADMIN_EMAIL` and `ADMIN_PASSWORD`, and set `JWT_SECRET` for anything beyond a laptop.
 
@@ -92,7 +94,7 @@ cd docs && npm install && npm run build
 
 ## Hosting in the cloud
 
-The same Docker images run everywhere. Pick one of the two paths below.
+The same Docker images run everywhere. Pick one of the three paths below.
 
 > **Before exposing anything:** the robot endpoint has no authentication by design. Anyone who can reach it can report telemetry for any robot id. Keep it on a private network, behind a VPN, an IP allow list or mTLS at the proxy.
 
@@ -174,7 +176,7 @@ Use this when you want the provider to run the databases and restart containers 
 
 1. Create the three databases in the same region and a private network that the containers can reach.
 
-2. Build and push the images. The dashboard needs the public API URL at build time:
+2. Build and push the images, or use the ones CI publishes to `ghcr.io/cnotv/robot-fleet-platform/<service>`:
 
    ```bash
    docker build --target runtime -t $REGISTRY/ingestion-service:1.0.0 ingestion-service
@@ -185,7 +187,7 @@ Use this when you want the provider to run the databases and restart containers 
    ```
 
    ```bash
-   docker build --target runtime --build-arg NEXT_PUBLIC_API_URL=https://api.example.com -t $REGISTRY/fleet-dashboard:1.0.0 fleet-dashboard
+   docker build --target runtime -t $REGISTRY/fleet-dashboard:1.0.0 fleet-dashboard
    ```
 
    ```bash
@@ -198,7 +200,7 @@ Use this when you want the provider to run the databases and restart containers 
    | --- | --- | --- | --- |
    | ingestion-service | 8080 | `REDIS_URL` | 1 or more |
    | orchestration-api | 4000 | `REDIS_URL`, `DATABASE_URL`, `MONGO_URL`, `JWT_SECRET`, `CORS_ORIGIN`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | exactly 1 |
-   | fleet-dashboard | 3000 | none at runtime | 1 or more |
+   | fleet-dashboard | 3000 | `PUBLIC_API_URL` | 1 or more |
 
    Keep secrets in the platform secret store (Secrets Manager, Secret Manager, Key Vault), not in plain environment files.
 
@@ -211,6 +213,16 @@ Platform notes:
 * **WebSocket timeouts.** Raise the idle or request timeout to the maximum (ALB idle timeout 3600s, Cloud Run request timeout 3600s). Robots and the dashboard reconnect automatically when a connection is recycled.
 * **Redis Pub/Sub.** Serverless Redis tiers must support `SUBSCRIBE`; check this before choosing one.
 * **Schema.** The API runs `prisma db push` on boot, so the database user needs permission to create tables.
+
+### Option C: Kubernetes
+
+Kustomize manifests in `deploy/k8s/` run the same images on any cluster. The `production` overlay expects managed databases, pulls the images CI pushes to GHCR, and adds TLS, a robot IP allow list and autoscaling.
+
+```bash
+kubectl apply -k deploy/k8s/overlays/production
+```
+
+Create the `fleet-secrets` secret and set your hosts first; the full procedure is in [Kubernetes](https://cnotv.github.io/robot-fleet-platform/operations/kubernetes#production).
 
 ## Known limits
 

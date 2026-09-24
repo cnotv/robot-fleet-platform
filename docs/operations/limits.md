@@ -10,3 +10,5 @@
 | Deleted robots still stream if they keep connecting; the dashboard hides them | Reject unknown ids at ingestion by syncing the inventory |
 | `RobotState` and the robot types are declared in both API and dashboard | A shared contracts package |
 | Base map tiles come from the free OpenFreeMap service | A commercial or self hosted style for production |
+| Local Kubernetes runs single instance databases without backups | Operators such as CloudNativePG, or managed services as in production |
+| Ingress timeouts use ingress-nginx annotations | Equivalent settings for other controllers or the Gateway API |

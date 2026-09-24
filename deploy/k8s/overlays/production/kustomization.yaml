@@ -1,0 +1,75 @@
+# Production: managed Redis, PostgreSQL and MongoDB outside the cluster,
+# images from GHCR, TLS through cert-manager, autoscaling.
+#
+# Before the first deploy, create the secret from your own values:
+#   kubectl -n robot-fleet create secret generic fleet-secrets \
+#     --from-literal=DATABASE_URL=... --from-literal=MONGO_URL=... \
+#     --from-literal=REDIS_URL=... --from-literal=JWT_SECRET=...
+# or sync it with External Secrets Operator. It is never stored in this repository.
+#
+# Pin a release: kustomize edit set image ingestion-service=ghcr.io/cnotv/robot-fleet-platform/ingestion-service:sha-<commit>
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: robot-fleet
+resources:
+  - ../../base
+  - autoscaling.yaml
+configMapGenerator:
+  - name: fleet-config
+    behavior: merge
+    literals:
+      - CORS_ORIGIN=https://app.example.com
+images:
+  - name: ingestion-service
+    newName: ghcr.io/cnotv/robot-fleet-platform/ingestion-service
+    newTag: latest
+  - name: orchestration-api
+    newName: ghcr.io/cnotv/robot-fleet-platform/orchestration-api
+    newTag: latest
+  - name: fleet-dashboard
+    newName: ghcr.io/cnotv/robot-fleet-platform/fleet-dashboard
+    newTag: latest
+patches:
+  - target: { kind: Ingress, name: fleet-app }
+    patch: |
+      - op: add
+        path: /metadata/annotations/cert-manager.io~1cluster-issuer
+        value: letsencrypt
+      - op: add
+        path: /spec/rules/0/host
+        value: app.example.com
+      - op: add
+        path: /spec/tls
+        value: [{ hosts: [app.example.com], secretName: fleet-app-tls }]
+  # Robots have no credentials, so only the robot networks may reach them.
+  - target: { kind: Ingress, name: fleet-robots }
+    patch: |
+      - op: add
+        path: /metadata/annotations/cert-manager.io~1cluster-issuer
+        value: letsencrypt
+      - op: add
+        path: /metadata/annotations/nginx.ingress.kubernetes.io~1whitelist-source-range
+        value: 10.0.0.0/8
+      - op: add
+        path: /spec/rules/0/host
+        value: robots.example.com
+      - op: add
+        path: /spec/tls
+        value: [{ hosts: [robots.example.com], secretName: fleet-robots-tls }]
+  # The HPA owns replica counts; a fixed value would reset them on every apply.
+  - target: { kind: Deployment, name: ingestion-service|fleet-dashboard }
+    patch: |
+      - op: remove
+        path: /spec/replicas
+  # Always pull, so a moving tag like latest rolls out with `kubectl rollout restart`.
+  # Prefer pinning immutable sha tags (see above), which make this a no op.
+  - target: { kind: Deployment }
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Always
+  - target: { kind: Deployment, name: orchestration-api }
+    patch: |
+      - op: replace
+        path: /spec/template/spec/initContainers/0/imagePullPolicy
+        value: Always

@@ -1,0 +1,57 @@
+# Whole platform in one cluster for development and tests: Docker Desktop,
+# OrbStack, kind or minikube. Run `make k8s-local` from the repository root.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: robot-fleet
+resources:
+  - ../../base
+  - databases.yaml
+  - simulator.yaml
+# Development values only; they match the Docker Compose defaults.
+secretGenerator:
+  - name: fleet-secrets
+    literals:
+      - DATABASE_URL=postgresql://cnotv:cnotv@postgres:5432/fleet
+      - MONGO_URL=mongodb://mongodb:27017/fleet
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=dev-only-change-me
+      - ADMIN_EMAIL=
+      - ADMIN_PASSWORD=cnotv-admin
+configMapGenerator:
+  - name: fleet-config
+    behavior: merge
+    literals:
+      # Reached through kubectl port-forward, so dashboard and API have separate origins.
+      - PUBLIC_API_URL=http://localhost:4000
+      - CORS_ORIGIN=http://localhost:3000
+      - DEMO_FLEET_FILE=/app/demo/hotel-fleet.json
+# Images built by `docker compose build`.
+images:
+  - name: ingestion-service
+    newName: robot-fleet-platform-ingestion-service
+    newTag: latest
+  - name: orchestration-api
+    newName: robot-fleet-platform-orchestration-api
+    newTag: latest
+  - name: fleet-dashboard
+    newName: robot-fleet-platform-fleet-dashboard
+    newTag: latest
+  - name: simulator
+    newName: robot-fleet-platform-simulator
+    newTag: latest
+patches:
+  - target: { kind: Deployment, name: ingestion-service|fleet-dashboard }
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  # The demo fleet ConfigMap is created by `make k8s-local` from
+  # ingestion-service/cmd/simulator/hotel-fleet.json, which lives outside this directory.
+  - target: { kind: Deployment, name: orchestration-api }
+    patch: |
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value: { name: demo-fleet, configMap: { name: demo-fleet } }
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value: { name: demo-fleet, mountPath: /app/demo, readOnly: true }
