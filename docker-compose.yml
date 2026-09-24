@@ -1,0 +1,95 @@
+name: robot-fleet-platform
+
+# Infrastructure starts by default. Application services sit behind profiles:
+#   docker compose up                              infra only, run services from source
+#   docker compose --profile apps up --build       infra plus all three services
+#   docker compose --profile apps --profile sim up --build   plus 1,000 virtual robots
+# Ports bind to 127.0.0.1 so databases are never exposed on a public host.
+# Put a TLS reverse proxy in front for cloud use (see README, Hosting in the cloud).
+
+x-dev-secrets: &dev-secrets
+  JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports: ["${BIND_ADDR:-127.0.0.1}:6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: cnotv
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cnotv}
+      POSTGRES_DB: fleet
+    ports: ["${BIND_ADDR:-127.0.0.1}:5432:5432"]
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "cnotv", "-d", "fleet"]
+      interval: 5s
+      retries: 10
+
+  mongodb:
+    image: mongo:7
+    ports: ["${BIND_ADDR:-127.0.0.1}:27017:27017"]
+    volumes: [mongo-data:/data/db]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      retries: 10
+
+  ingestion-service:
+    profiles: [apps]
+    build:
+      context: ./ingestion-service
+      target: runtime
+    environment:
+      REDIS_URL: redis://redis:6379
+    ports: ["${BIND_ADDR:-127.0.0.1}:8080:8080"]
+    depends_on:
+      redis: { condition: service_healthy }
+
+  orchestration-api:
+    profiles: [apps]
+    build:
+      context: ./orchestration-api
+      target: runtime
+    environment:
+      <<: *dev-secrets
+      DATABASE_URL: postgresql://cnotv:${POSTGRES_PASSWORD:-cnotv}@postgres:5432/fleet
+      MONGO_URL: mongodb://mongodb:27017/fleet
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGIN: ${PUBLIC_DASHBOARD_URL:-http://localhost:3000}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-cnotv-admin}
+    ports: ["${BIND_ADDR:-127.0.0.1}:4000:4000"]
+    depends_on:
+      redis: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      mongodb: { condition: service_healthy }
+
+  fleet-dashboard:
+    profiles: [apps]
+    build:
+      context: ./fleet-dashboard
+      target: runtime
+      args:
+        # Baked into the client bundle, so it must be reachable from the browser.
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:4000}
+    ports: ["${BIND_ADDR:-127.0.0.1}:3000:3000"]
+    depends_on: [orchestration-api]
+
+  simulator:
+    profiles: [sim]
+    build:
+      context: ./ingestion-service
+      target: simulator
+    command: ["-url", "ws://ingestion-service:8080", "-n", "1000", "-interval", "1s"]
+    depends_on: [ingestion-service]
+
+volumes:
+  postgres-data:
+  mongo-data:

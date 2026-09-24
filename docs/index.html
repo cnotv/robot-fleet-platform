@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Robot Fleet Platform Architecture</title>
+<meta name="description" content="Architecture of the Robot Fleet Platform: Go ingestion, Node orchestration API and Next.js dashboard for 1,000 concurrent robots.">
+<style>
+  :root {
+    --bg: #fbfbfa;
+    --surface: #ffffff;
+    --text: #1d1d1f;
+    --muted: #5f6368;
+    --border: #e3e3e0;
+    --accent: #0f766e;
+    --accent-soft: #e6f4f2;
+    --code-bg: #f3f3f1;
+    --warn-bg: #fff7e6;
+    --warn-border: #f0c36d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111214;
+      --surface: #18191c;
+      --text: #ececec;
+      --muted: #a0a4ab;
+      --border: #2c2e33;
+      --accent: #5eead4;
+      --accent-soft: #15302d;
+      --code-bg: #1f2125;
+      --warn-bg: #2b2414;
+      --warn-border: #8a6d2b;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); max-width: 1180px; margin: 0 auto; }
+  nav {
+    position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+    padding: 40px 24px; border-right: 1px solid var(--border); font-size: 14px;
+  }
+  nav .brand { font-weight: 650; margin-bottom: 20px; display: block; color: var(--text); text-decoration: none; }
+  nav ol { list-style: none; padding: 0; margin: 0; }
+  nav li { margin: 6px 0; }
+  nav a { color: var(--muted); text-decoration: none; }
+  nav a:hover { color: var(--accent); }
+  main { padding: 40px 48px 96px; min-width: 0; }
+  h1 { font-size: 2.1rem; line-height: 1.2; margin: 0 0 12px; letter-spacing: -0.01em; }
+  h2 { font-size: 1.45rem; margin: 64px 0 12px; padding-top: 8px; border-top: 1px solid var(--border); }
+  h3 { font-size: 1.1rem; margin: 32px 0 8px; }
+  p, li { max-width: 72ch; }
+  .lede { font-size: 1.1rem; color: var(--muted); max-width: 64ch; }
+  a { color: var(--accent); }
+  code { font: 0.88em/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  pre { background: var(--code-bg); padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 14px; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 15px; display: block; overflow-x: auto; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-weight: 600; color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin: 20px 0; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; }
+  .card h3 { margin-top: 0; }
+  .card .stack { font-size: 13px; color: var(--muted); margin: 0 0 10px; }
+  .card ul { padding-left: 18px; margin: 0; font-size: 15px; }
+  .figure { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin: 20px 0; overflow-x: auto; }
+  .figure .mermaid { display: flex; justify-content: center; min-width: 560px; }
+  .note { background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 8px; padding: 12px 16px; margin: 16px 0; }
+  .pill { display: inline-block; background: var(--accent-soft); color: var(--accent); border-radius: 999px; padding: 2px 10px; font-size: 13px; font-weight: 600; margin-right: 6px; }
+  @media (max-width: 860px) {
+    .layout { display: block; }
+    nav { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--border); padding: 20px 16px; }
+    nav ol { columns: 2; }
+    main { padding: 24px 16px 64px; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav aria-label="Sections">
+  <a class="brand" href="#top">Robot Fleet Platform</a>
+  <ol>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#components">Components</a></li>
+    <li><a href="#flow">Telemetry flow</a></li>
+    <li><a href="#contracts">Contracts</a></li>
+    <li><a href="#data">Data stores</a></li>
+    <li><a href="#performance">Performance design</a></li>
+    <li><a href="#security">Security model</a></li>
+    <li><a href="#deployment">Deployment</a></li>
+    <li><a href="#operations">Operations</a></li>
+    <li><a href="#limits">Known limits</a></li>
+  </ol>
+</nav>
+
+<main id="top">
+<h1>Robot Fleet Platform architecture</h1>
+<p class="lede">A real time resource management system that ingests telemetry from 1,000 concurrent robots, keeps the latest state of every robot in memory, and streams it to a browser dashboard without dropping frames.</p>
+<p><span class="pill">Go</span><span class="pill">Node.js + TypeScript</span><span class="pill">Next.js</span><span class="pill">Redis</span><span class="pill">PostgreSQL</span><span class="pill">MongoDB</span></p>
+
+<h2 id="overview">Overview</h2>
+<p>The platform is a monorepo with three decoupled services. They share no code and talk only through Redis and HTTP or WebSocket, so each can be built, scaled and replaced on its own.</p>
+
+<div class="figure">
+<pre class="mermaid">
+flowchart TB
+  R["1,000 robots"] -- "WebSocket /ws/robot/{id}" --> I["ingestion-service<br/>Go"]
+  I -- "PUBLISH robot:telemetry:live" --> RD[("Redis")]
+  RD -- "SUBSCRIBE" --> A["orchestration-api<br/>Node.js + TypeScript"]
+  A -- "HSET fleet:live_state" --> RD
+  A -- "insertMany every 250ms" --> M[("MongoDB")]
+  A -- "users, robots" --> P[("PostgreSQL")]
+  A -- "WebSocket /ws/fleet" --> D["fleet-dashboard<br/>Next.js"]
+  D -- "GET /api/fleet/snapshot" --> A
+</pre>
+</div>
+
+<table>
+  <thead><tr><th>Directory</th><th>Responsibility</th><th>Port</th></tr></thead>
+  <tbody>
+    <tr><td><code>ingestion-service/</code></td><td>Accept robot sockets, validate and throttle packets, publish to Redis.</td><td>8080</td></tr>
+    <tr><td><code>orchestration-api/</code></td><td>Authentication, live state cache, telemetry persistence, dashboard fan out.</td><td>4000</td></tr>
+    <tr><td><code>fleet-dashboard/</code></td><td>Browser UI: fleet stats, canvas map, virtualized robot table.</td><td>3000</td></tr>
+  </tbody>
+</table>
+
+<h2 id="components">Components</h2>
+<div class="cards">
+  <div class="card">
+    <h3>Ingestion service</h3>
+    <p class="stack">Go, net/http, gorilla/websocket, go-redis</p>
+    <ul>
+      <li>One goroutine per robot connection.</li>
+      <li>Accepts one frame per 500ms per connection; extra frames get a <code>throttled</code> ack.</li>
+      <li>Strict decoding: unknown fields, missing fields and out of range values are rejected.</li>
+      <li>The <code>robot_id</code> in the body must match the id in the URL.</li>
+      <li>Adds <code>ingested_at</code> and publishes to <code>robot:telemetry:live</code>.</li>
+      <li>Stateless, so it scales horizontally behind any TCP or HTTP load balancer.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Orchestration API</h3>
+    <p class="stack">Node.js 20, TypeScript, Express 5, Prisma, Mongoose, ioredis, ws</p>
+    <ul>
+      <li>JWT login backed by PostgreSQL users with roles.</li>
+      <li>Subscribes to the telemetry channel and batches every 250ms.</li>
+      <li>Each batch: one <code>HSET</code>, one broadcast frame, one unordered bulk insert.</li>
+      <li>Serves the full fleet snapshot straight from the Redis hash.</li>
+      <li>Logs errors to the <code>ErrorLog</code> collection.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>Fleet dashboard</h3>
+    <p class="stack">Next.js App Router, React, Tailwind, Zustand, TanStack Virtual, lucide-react</p>
+    <ul>
+      <li>Zustand store buffers socket frames and commits to React every 300ms.</li>
+      <li>Reconnects reload the snapshot, so missed frames are resynced.</li>
+      <li>Canvas map repaints in <code>requestAnimationFrame</code> and never re-renders React.</li>
+      <li>Robot table renders only the rows inside the viewport.</li>
+    </ul>
+  </div>
+</div>
+
+<h2 id="flow">Telemetry flow</h2>
+<p>A packet travels from robot to pixel in about half a second in the worst case: up to 250ms waiting for the API batch plus up to 300ms waiting for the dashboard flush.</p>
+<div class="figure">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant Robot
+  participant Ingest as ingestion-service
+  participant Redis
+  participant API as orchestration-api
+  participant Mongo as MongoDB
+  participant UI as fleet-dashboard
+  Robot->>Ingest: WebSocket frame (JSON packet)
+  Ingest->>Ingest: throttle check, strict decode, sanitize
+  Ingest->>Redis: PUBLISH robot:telemetry:live
+  Ingest-->>Robot: {"ok": true}
+  Redis-->>API: message
+  API->>API: map to RobotState, keep latest per robot
+  Note over API: every 250ms
+  API->>Redis: HSET fleet:live_state (changed robots)
+  API-)Mongo: insertMany (all samples, async)
+  API-)UI: WebSocket frame: RobotState[]
+  Note over UI: buffer, commit every 300ms
+  UI->>UI: repaint canvas and visible rows
+</pre>
+</div>
+
+<h3>Dashboard start up</h3>
+<ol>
+  <li>The user signs in with <code>POST /api/auth/login</code> and gets a JWT, kept in <code>sessionStorage</code>.</li>
+  <li>The store calls <code>GET /api/fleet/snapshot</code> to load all 1,000 robots at once.</li>
+  <li>It opens <code>/ws/fleet?token=</code> and merges incoming batches, ignoring any update older than what it already holds.</li>
+  <li>If the socket drops, it waits 2s, reloads the snapshot and reconnects. A 401 on the snapshot sends the user back to the login page.</li>
+</ol>
+
+<h2 id="contracts">Contracts</h2>
+<h3>Robot packet (robot to ingestion)</h3>
+<pre><code>{
+  "robot_id": "rob-v-10049",
+  "status": "active",              // active | charging | error | idle
+  "telemetry": {
+    "latitude": 48.1351,           // [-90, 90]
+    "longitude": 11.5820,          // [-180, 180]
+    "speed_mps": 1.2,              // [0, 50]
+    "battery_pct": 84.5            // [0, 100]
+  },
+  "current_task": "floor_scrub_zone_b",   // [A-Za-z0-9_.:-], up to 128 chars
+  "timestamp": "2026-09-24T00:00:00Z"     // RFC 3339, at most 30s in the future
+}</code></pre>
+<p>A frame may also be a JSON array of up to 5 packets. Each frame is answered with <code>{"ok":true}</code> or <code>{"ok":false,"error":"..."}</code>.</p>
+
+<h3>Live state (API to dashboard)</h3>
+<pre><code>{
+  "robotId": "rob-v-10049",
+  "status": "active",
+  "latitude": 48.1351,
+  "longitude": 11.582,
+  "speedMps": 1.2,
+  "batteryPct": 84.5,
+  "currentTask": "floor_scrub_zone_b",
+  "timestamp": "2026-09-24T00:00:00.000Z",
+  "ingestedAt": "2026-09-24T00:00:00.120Z"
+}</code></pre>
+
+<h3>Endpoints</h3>
+<table>
+  <thead><tr><th>Service</th><th>Endpoint</th><th>Auth</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td>ingestion</td><td><code>GET /ws/robot/{id}</code></td><td>none</td><td>Robot telemetry socket</td></tr>
+    <tr><td>ingestion</td><td><code>GET /healthz</code></td><td>none</td><td>Liveness</td></tr>
+    <tr><td>api</td><td><code>POST /api/auth/login</code></td><td>none</td><td>Email and password to JWT (HS256, 8h)</td></tr>
+    <tr><td>api</td><td><code>GET /api/auth/me</code></td><td>Bearer</td><td>Current user</td></tr>
+    <tr><td>api</td><td><code>GET /api/fleet/snapshot</code></td><td>Bearer</td><td>All robots from <code>fleet:live_state</code></td></tr>
+    <tr><td>api</td><td><code>GET /ws/fleet?token=</code></td><td>JWT in query</td><td>Batches of changed robots every 250ms</td></tr>
+    <tr><td>api</td><td><code>GET /healthz</code></td><td>none</td><td>Liveness</td></tr>
+  </tbody>
+</table>
+
+<h3>Redis keys</h3>
+<table>
+  <thead><tr><th>Key</th><th>Type</th><th>Writer</th><th>Reader</th></tr></thead>
+  <tbody>
+    <tr><td><code>robot:telemetry:live</code></td><td>Pub/Sub channel</td><td>ingestion-service</td><td>orchestration-api</td></tr>
+    <tr><td><code>fleet:live_state</code></td><td>Hash: robot id to RobotState JSON</td><td>orchestration-api</td><td>snapshot endpoint</td></tr>
+  </tbody>
+</table>
+
+<h2 id="data">Data stores</h2>
+<h3>PostgreSQL (Prisma): permanent relational data</h3>
+<div class="figure">
+<pre class="mermaid">
+erDiagram
+  Company ||--o{ User : employs
+  Company ||--o{ Robot : owns
+  Company {
+    string id PK
+    string name UK
+    datetime createdAt
+  }
+  User {
+    string id PK
+    string email UK
+    string passwordHash
+    Role role "admin, operator, viewer"
+    string companyId FK
+  }
+  Robot {
+    string id PK "same id as telemetry"
+    string serialNumber UK
+    string model
+    string firmware
+    float maxSpeedMps
+    int batteryWh
+    string companyId FK
+    datetime commissionedAt
+  }
+</pre>
+</div>
+
+<h3>MongoDB (Mongoose): high volume and schemaless data</h3>
+<table>
+  <thead><tr><th>Collection</th><th>Contents</th><th>Retention</th></tr></thead>
+  <tbody>
+    <tr><td><code>telemetrysamples</code></td><td>Every accepted packet, indexed by robot and time</td><td>7 days (TTL index on <code>ingestedAt</code>)</td></tr>
+    <tr><td><code>errorlogs</code></td><td>Mapping failures, HTTP errors, failed writes, with stack and context</td><td>Unbounded</td></tr>
+    <tr><td><code>skills</code></td><td>Skill Store catalogue: slug, version, compatible models, entrypoint, config schema</td><td>Unbounded</td></tr>
+  </tbody>
+</table>
+
+<h3>Redis: hot state and messaging</h3>
+<p>Redis is the only shared runtime dependency between ingestion and the API. It holds nothing that cannot be rebuilt: the hash refills within one second of robots reporting.</p>
+
+<h2 id="performance">Performance design</h2>
+<table>
+  <thead><tr><th>Concern</th><th>Decision</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td>Robot flooding</td><td>500ms window per connection; invalid frames also consume the window</td><td>At most 2 frames per second per robot reach Redis</td></tr>
+    <tr><td>Redis round trips</td><td>API batches every 250ms into one multi field <code>HSET</code></td><td>4 writes per second regardless of fleet size</td></tr>
+    <tr><td>Snapshot latency</td><td>Hash values are stored as JSON and joined into an array without parsing</td><td>1,000 robots served in single digit milliseconds</td></tr>
+    <tr><td>Dashboard fan out</td><td>One frame per batch per client; slow clients over 1 MB buffered are skipped</td><td>Server memory stays bounded</td></tr>
+    <tr><td>MongoDB writes</td><td>Unordered <code>insertMany</code>, fire and forget</td><td>Persistence never blocks the live path</td></tr>
+    <tr><td>React reflow</td><td>Socket frames buffered, committed every 300ms</td><td>At most about 3 React commits per second</td></tr>
+    <tr><td>Map rendering</td><td>Canvas, one path per status, repaint only when data changed</td><td>1,000 markers with no React renders</td></tr>
+    <tr><td>Table rendering</td><td>TanStack Virtual with overscan 10</td><td>Only visible rows exist in the DOM</td></tr>
+  </tbody>
+</table>
+
+<h2 id="security">Security model</h2>
+<ul>
+  <li><strong>Robots</strong> are unauthenticated by design. Strict validation limits damage, but any client that can reach the ingestion endpoint can report for any robot id. Restrict it at the network edge (private network, VPN, IP allow list or mTLS) before exposing it.</li>
+  <li><strong>Users</strong> sign in with bcrypt hashed passwords and receive an HS256 JWT valid for 8 hours. <code>JWT_SECRET</code> must be a long random value in every shared environment.</li>
+  <li><strong>Dashboard socket</strong> carries the JWT in the query string, because browsers cannot set headers on a WebSocket. Keep query strings out of proxy access logs.</li>
+  <li><strong>CORS</strong> allows exactly one origin, <code>CORS_ORIGIN</code>.</li>
+  <li><strong>Databases</strong> are published on 127.0.0.1 only by the compose file and are never meant to be reachable from outside the host or private network.</li>
+</ul>
+
+<h2 id="deployment">Deployment</h2>
+<p>Each service ships a multi stage Dockerfile. The same images run locally through Docker Compose and in the cloud. The <a href="https://github.com/cnotv/robot-fleet-platform#hosting-in-the-cloud">README</a> has step by step hosting instructions.</p>
+<div class="figure">
+<pre class="mermaid">
+flowchart LR
+  subgraph Internet
+    RB["Robots"]
+    BR["Browsers"]
+  end
+  subgraph Edge["TLS reverse proxy or load balancer"]
+    E1["robots.example.com"]
+    E2["api.example.com"]
+    E3["app.example.com"]
+  end
+  subgraph Private["Private network"]
+    IS["ingestion-service x N"]
+    OA["orchestration-api x 1"]
+    FD["fleet-dashboard x N"]
+    RD[("Redis")]
+    PG[("PostgreSQL")]
+    MG[("MongoDB")]
+  end
+  RB -- wss --> E1 --> IS
+  BR -- https, wss --> E2 --> OA
+  BR -- https --> E3 --> FD
+  IS --> RD
+  OA --> RD
+  OA --> PG
+  OA --> MG
+</pre>
+</div>
+
+<h3>Scaling rules</h3>
+<table>
+  <thead><tr><th>Service</th><th>Replicas</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td>ingestion-service</td><td>Any number</td><td>Stateless; each connection is independent.</td></tr>
+    <tr><td>fleet-dashboard</td><td>Any number</td><td>Static and server rendered pages only.</td></tr>
+    <tr><td>orchestration-api</td><td>Exactly one</td><td>Every replica subscribes to the channel, so each would write the same samples to MongoDB. Split persistence into a single worker before scaling out.</td></tr>
+  </tbody>
+</table>
+
+<h3>Configuration</h3>
+<table>
+  <thead><tr><th>Variable</th><th>Service</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>REDIS_URL</code></td><td>ingestion, api</td><td>Redis connection URL</td></tr>
+    <tr><td><code>ADDR</code></td><td>ingestion</td><td>Listen address, default <code>:8080</code></td></tr>
+    <tr><td><code>DATABASE_URL</code></td><td>api</td><td>PostgreSQL connection URL</td></tr>
+    <tr><td><code>MONGO_URL</code></td><td>api</td><td>MongoDB connection URL</td></tr>
+    <tr><td><code>JWT_SECRET</code></td><td>api</td><td>JWT signing secret (required)</td></tr>
+    <tr><td><code>CORS_ORIGIN</code></td><td>api</td><td>Public dashboard origin</td></tr>
+    <tr><td><code>ADMIN_EMAIL</code>, <code>ADMIN_PASSWORD</code></td><td>api</td><td>First admin, created when no users exist</td></tr>
+    <tr><td><code>PORT</code></td><td>api</td><td>Listen port, default 4000</td></tr>
+    <tr><td><code>NEXT_PUBLIC_API_URL</code></td><td>dashboard (build time)</td><td>Public API URL baked into the client bundle</td></tr>
+  </tbody>
+</table>
+
+<h2 id="operations">Operations</h2>
+<ul>
+  <li><strong>Health</strong>: <code>GET /healthz</code> on ingestion and API returns 204.</li>
+  <li><strong>Logs</strong>: ingestion writes JSON lines to stdout; the API writes to stdout and to the <code>errorlogs</code> collection.</li>
+  <li><strong>Schema</strong>: the API container runs <code>prisma db push</code> on boot.</li>
+  <li><strong>Load test</strong>: <code>go run ./cmd/simulator -n 1000 -url wss://robots.example.com</code> drives a fleet from any machine.</li>
+  <li><strong>Tests</strong>: <code>go test -race ./...</code> in ingestion; <code>npm test</code> in the API cover handshakes, throttling, sanitization and telemetry mapping.</li>
+</ul>
+
+<h2 id="limits">Known limits</h2>
+<div class="note">
+  <ul>
+    <li>Ingestion has no device authentication.</li>
+    <li>Login has no rate limiting.</li>
+    <li>The orchestration API must run as a single replica.</li>
+    <li>Schema changes use <code>db push</code>; move to <code>prisma migrate deploy</code> once migrations exist.</li>
+    <li><code>RobotState</code> is declared in both the API and the dashboard.</li>
+  </ul>
+</div>
+</main>
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({ startOnLoad: true, theme: dark ? 'dark' : 'neutral', securityLevel: 'strict' });
+</script>
+</body>
+</html>
