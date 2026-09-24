@@ -1,11 +1,10 @@
 import express, { type ErrorRequestHandler } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import { authRouter, requireAuth } from './auth.js';
-import { LIVE_STATE_KEY } from './telemetry.js';
+import { fleetRouter, ValidationError, type FleetDeps } from './fleet.js';
 
-export interface AppDeps {
+export interface AppDeps extends FleetDeps {
   prisma: PrismaClient;
-  cache: { hvals(key: string): Promise<string[]> };
   jwtSecret: string;
   corsOrigin: string;
   onError(err: unknown, context: Record<string, unknown>): void;
@@ -19,7 +18,7 @@ export function createApp(deps: AppDeps) {
   app.use((req, res, next) => {
     res.set('Access-Control-Allow-Origin', deps.corsOrigin);
     res.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
-    res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
     res.set('Vary', 'Origin');
     if (req.method === 'OPTIONS') {
       res.sendStatus(204);
@@ -33,15 +32,17 @@ export function createApp(deps: AppDeps) {
   });
 
   app.use('/api/auth', authRouter(deps.prisma, deps.jwtSecret));
-
-  // Values are stored as JSON strings, so the array is assembled without a
-  // parse and stringify round trip. That keeps 1,000 robots well under 5ms.
-  app.get('/api/fleet/snapshot', requireAuth(deps.jwtSecret), async (_req, res) => {
-    const values = await deps.cache.hvals(LIVE_STATE_KEY);
-    res.type('application/json').send(`[${values.join(',')}]`);
-  });
+  app.use('/api', requireAuth(deps.jwtSecret), fleetRouter(deps));
 
   const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
+    if (err instanceof ValidationError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    if (err instanceof SyntaxError) {
+      res.status(400).json({ error: 'invalid JSON body' });
+      return;
+    }
     deps.onError(err, { source: 'http', method: req.method, path: req.path });
     res.status(500).json({ error: 'internal error' });
   };

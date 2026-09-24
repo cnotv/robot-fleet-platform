@@ -48,6 +48,17 @@ export function requireAuth(secret: string): RequestHandler {
   };
 }
 
+export function requireRole(...roles: Role[]): RequestHandler {
+  return (_req, res, next) => {
+    const user = res.locals.user as AuthUser | undefined;
+    if (!user || !roles.includes(user.role)) {
+      res.status(403).json({ error: `requires role ${roles.join(' or ')}` });
+      return;
+    }
+    next();
+  };
+}
+
 export function authRouter(prisma: PrismaClient, secret: string): Router {
   const router = Router();
 
@@ -71,22 +82,4 @@ export function authRouter(prisma: PrismaClient, secret: string): Router {
   });
 
   return router;
-}
-
-/** Creates the first admin on an empty database so the dashboard is usable out of the box. */
-export async function ensureAdmin(prisma: PrismaClient, email?: string, password?: string): Promise<void> {
-  if (!email || !password || (await prisma.user.count()) > 0) return;
-  const company = await prisma.company.upsert({
-    where: { name: 'cnotv' },
-    update: {},
-    create: { name: 'cnotv' },
-  });
-  await prisma.user.create({
-    data: {
-      email: email.toLowerCase(),
-      passwordHash: await bcrypt.hash(password, 12),
-      role: 'admin',
-      companyId: company.id,
-    },
-  });
 }

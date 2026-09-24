@@ -2,7 +2,9 @@
 
 Real time resource management for a fleet of 1,000 robots. Three decoupled services share one repository and one local compose profile.
 
-Architecture documentation: https://cnotv.github.io/robot-fleet-platform/ (published from `docs/` by `.github/workflows/pages.yml` on every push to `main`).
+The demo models a global hotel group: cleaning, delivery, room service and reception robots in 20 hotels on five continents, with a world map, location filters, reports and robot management in the dashboard.
+
+**Documentation: https://cnotv.github.io/robot-fleet-platform/** Markdown sources live in [`docs/`](docs/) and are built with VitePress and published by `.github/workflows/pages.yml` on every push to `main`. See [docs/contributing.md](docs/contributing.md) to edit them, and [AGENTS.md](AGENTS.md) for agent instructions.
 
 ```
 robot ──ws──▶ ingestion-service ──pub──▶ Redis channel robot:telemetry:live
@@ -10,8 +12,8 @@ robot ──ws──▶ ingestion-service ──pub──▶ Redis channel robot
                                                   ▼
                                    orchestration-api (Node, TS)
                                    ├─ HSET fleet:live_state  (Redis)
-                                   ├─ bulk insert telemetry  (MongoDB)
-                                   ├─ users, robots          (PostgreSQL)
+                                   ├─ changes + heartbeats   (MongoDB)
+                                   ├─ users, hotels, robots  (PostgreSQL)
                                    └─ /ws/fleet batches ──ws──▶ fleet-dashboard (Next.js)
 ```
 
@@ -19,17 +21,18 @@ robot ──ws──▶ ingestion-service ──pub──▶ Redis channel robot
 | --- | --- | --- |
 | `ingestion-service/` | Go, `net/http`, `gorilla/websocket`, `go-redis` | 8080 |
 | `orchestration-api/` | Node 20, TypeScript, Express 5, Prisma, Mongoose, ioredis, ws | 4000 |
-| `fleet-dashboard/` | Next.js App Router, React, Tailwind, Zustand, lucide-react, TanStack Virtual | 3000 |
+| `fleet-dashboard/` | Next.js App Router, React, Tailwind, Zustand, MapLibre GL, TanStack Virtual, lucide-react | 3000 |
+| `docs/` | VitePress, Mermaid | |
 
 ## Quick start
 
-Everything in containers, with 1,000 simulated robots:
+Everything in containers, with 20 hotels and 1,000 simulated robots:
 
 ```bash
 docker compose --profile apps --profile sim up --build
 ```
 
-Open http://localhost:3000 and sign in with `` / `cnotv-admin`. The admin is created on first boot when the users table is empty. Override it with `ADMIN_EMAIL` and `ADMIN_PASSWORD`, and set `JWT_SECRET` for anything beyond a laptop.
+Open http://localhost:3000 and sign in with `` / `cnotv-admin`. On first boot with an empty database the API creates this admin and seeds the hotels and robots from `ingestion-service/cmd/simulator/hotel-fleet.json`. Override it with `ADMIN_EMAIL` and `ADMIN_PASSWORD`, and set `JWT_SECRET` for anything beyond a laptop.
 
 ## Working on one service
 
@@ -47,10 +50,10 @@ cd ingestion-service && go run .
 cd orchestration-api && npm install && npm run db:push && npm run dev
 ```
 
-The API reads `DATABASE_URL`, `MONGO_URL`, `REDIS_URL`, `JWT_SECRET`, `CORS_ORIGIN`, `ADMIN_EMAIL` and `ADMIN_PASSWORD`. For local runs:
+The API reads `DATABASE_URL`, `MONGO_URL`, `REDIS_URL`, `JWT_SECRET`, `CORS_ORIGIN`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` and `DEMO_FLEET_FILE`. For local runs:
 
 ```bash
-export DATABASE_URL=postgresql://cnotv:cnotv@localhost:5432/fleet MONGO_URL=mongodb://localhost:27017/fleet JWT_SECRET=dev ADMIN_EMAIL= ADMIN_PASSWORD=cnotv-admin
+export DATABASE_URL=postgresql://cnotv:cnotv@localhost:5432/fleet MONGO_URL=mongodb://localhost:27017/fleet JWT_SECRET=dev ADMIN_EMAIL= ADMIN_PASSWORD=cnotv-admin DEMO_FLEET_FILE=../ingestion-service/cmd/simulator/hotel-fleet.json
 ```
 
 ```bash
@@ -58,7 +61,7 @@ cd fleet-dashboard && npm install && npm run dev
 ```
 
 ```bash
-cd ingestion-service && go run ./cmd/simulator -n 1000
+cd ingestion-service && go run ./cmd/simulator
 ```
 
 ## Tests
@@ -75,31 +78,17 @@ cd orchestration-api && npm test && npm run typecheck
 cd fleet-dashboard && npm run typecheck && npm run build
 ```
 
+```bash
+cd docs && npm install && npm run build
+```
+
 ## Services
 
-### ingestion-service
-
-* `GET /ws/robot/{id}` upgrades to a WebSocket. The id must match `^[a-z0-9][a-z0-9-]{0,63}$`.
-* Each connection is served by its own goroutine.
-* A frame may hold one packet object or an array of up to 5 packets. Unknown fields, missing fields, out of range values, a `robot_id` that differs from the connection id and timestamps more than 30s in the future are rejected.
-* One frame per 500ms per connection is accepted. Every frame gets an ack: `{"ok":true}` or `{"ok":false,"error":"throttled"}`.
-* Sanitized packets are published to `robot:telemetry:live` with an added `ingested_at`.
-* `cmd/simulator` drives N virtual robots doing a random walk around Munich.
-
-### orchestration-api
-
-* `POST /api/auth/login` returns a JWT (HS256, 8h). `GET /api/auth/me` returns the caller.
-* `GET /api/fleet/snapshot` (bearer token) returns every robot from the `fleet:live_state` hash. The cached values are already JSON, so the response is joined, not reserialized.
-* `GET /ws/fleet?token=` streams arrays of changed robots every 250ms.
-* The Redis subscriber keeps the latest state per robot in memory and flushes every 250ms: one `HSET`, one broadcast, one unordered `insertMany` into MongoDB.
-* PostgreSQL (Prisma) holds `Company`, `User` with a `Role`, and the static `Robot` inventory.
-* MongoDB (Mongoose) holds `TelemetrySample` (7 day TTL), `ErrorLog` and the `Skill` store catalogue.
-
-### fleet-dashboard
-
-* The Zustand store loads the snapshot, opens the fleet socket and buffers frames. React state is committed at most every 300ms. A reconnect reloads the snapshot so missed frames are resynced.
-* `RobotTable` is virtualized; only visible rows are in the DOM.
-* `FleetMap` draws all robots on a canvas in a `requestAnimationFrame` loop, reading the store outside React, so updates cost no React renders. Replace `drawRobots` with a Mapbox or deck.gl layer when a basemap is needed.
+| Service | Summary | Details |
+| --- | --- | --- |
+| ingestion-service | One goroutine per robot socket, strict validation, 500ms throttle, publishes to Redis. Includes the hotel fleet simulator. | [docs](https://cnotv.github.io/robot-fleet-platform/architecture/ingestion) |
+| orchestration-api | JWT auth with roles, inventory and robot CRUD, live cache, telemetry history, activity reports, dashboard socket. | [docs](https://cnotv.github.io/robot-fleet-platform/architecture/orchestration-api), [API reference](https://cnotv.github.io/robot-fleet-platform/reference/api) |
+| fleet-dashboard | World map with clustering, location filters, hotel and robot pages, four reports, create, edit and delete robots. | [docs](https://cnotv.github.io/robot-fleet-platform/guide/dashboard) |
 
 ## Hosting in the cloud
 
@@ -160,7 +149,7 @@ Simplest path, and enough for the 1,000 robot target. Works on any provider that
 7. Robots connect to `wss://robots.example.com/ws/robot/{id}`. The dashboard is at `https://app.example.com`. To load test from your laptop:
 
    ```bash
-   cd ingestion-service && go run ./cmd/simulator -n 1000 -url wss://robots.example.com
+   cd ingestion-service && go run ./cmd/simulator -url wss://robots.example.com
    ```
 
 8. Back up PostgreSQL on a schedule:
@@ -225,8 +214,4 @@ Platform notes:
 
 ## Known limits
 
-* The fleet socket carries the JWT in the query string because browsers cannot set WebSocket headers. Keep it out of access logs, or move to a short lived ticket issued by the API.
-* The dashboard keeps the token in `sessionStorage`.
-* Login has no rate limiting.
-* The API container runs `prisma db push` on boot. Switch to `prisma migrate deploy` once migrations exist.
-* `RobotState` is declared in both the API and the dashboard. Extract a shared package if the contract starts to move.
+See [Known limits](https://cnotv.github.io/robot-fleet-platform/operations/limits) for the list and the upgrade path for each.

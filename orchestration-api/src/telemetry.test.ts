@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createLivePipeline } from './live.js';
+import { createLivePipeline, type PersistedSample } from './live.js';
 import { LIVE_STATE_KEY, TelemetryMappingError, toRobotState, type RobotState } from './telemetry.js';
 
 const wirePacket = {
@@ -39,10 +39,10 @@ test('rejects packets that break the contract', () => {
   }
 });
 
-test('pipeline keeps only the latest state per robot and flushes one batch', async () => {
+test('pipeline caches the latest state per robot and persists only changes and heartbeats', async () => {
   const hashes: Record<string, string>[] = [];
   const broadcasts: RobotState[][] = [];
-  const persisted: RobotState[][] = [];
+  const persisted: PersistedSample[][] = [];
   const errors: unknown[] = [];
   const pipeline = createLivePipeline({
     store: {
@@ -55,16 +55,25 @@ test('pipeline keeps only the latest state per robot and flushes one batch', asy
     persist: (s) => persisted.push(s),
     onError: (e) => errors.push(e),
   });
+  const at = (seconds: number, patch: Record<string, unknown> = {}) =>
+    JSON.stringify({ ...wirePacket, timestamp: new Date(Date.parse(wirePacket.timestamp) + seconds * 1000).toISOString(), ...patch });
 
-  pipeline.ingest(JSON.stringify(wirePacket));
-  pipeline.ingest(JSON.stringify({ ...wirePacket, telemetry: { ...wirePacket.telemetry, battery_pct: 80 } }));
+  pipeline.ingest(at(0));
+  pipeline.ingest(at(1, { telemetry: { ...wirePacket.telemetry, battery_pct: 80 } }));
+  pipeline.ingest(at(2, { status: 'error' }));
+  pipeline.ingest(at(3, { status: 'error', current_task: 'dock_charging' }));
+  pipeline.ingest(at(13, { status: 'error', current_task: 'dock_charging' }));
   pipeline.ingest('not json');
   await pipeline.flush();
   await pipeline.flush();
 
   assert.equal(errors.length, 1);
   assert.equal(hashes.length, 1, 'second flush with nothing pending is a no op');
-  assert.equal(JSON.parse(hashes[0]!['rob-v-10049']!).batteryPct, 80);
+  assert.equal(JSON.parse(hashes[0]!['rob-v-10049']!).currentTask, 'dock_charging');
   assert.equal(broadcasts[0]!.length, 1);
-  assert.equal(persisted[0]!.length, 2, 'every sample goes to the telemetry buffer');
+  assert.deepEqual(
+    persisted[0]!.map((s) => s.event),
+    ['task_started', 'status_changed', 'task_started', 'heartbeat'],
+    'an unchanged sample one second later is not persisted',
+  );
 });

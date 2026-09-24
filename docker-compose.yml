@@ -3,7 +3,7 @@ name: robot-fleet-platform
 # Infrastructure starts by default. Application services sit behind profiles:
 #   docker compose up                              infra only, run services from source
 #   docker compose --profile apps up --build       infra plus all three services
-#   docker compose --profile apps --profile sim up --build   plus 1,000 virtual robots
+#   docker compose --profile apps --profile sim up --build   plus 1,000 robots in 20 hotels
 # Ports bind to 127.0.0.1 so databases are never exposed on a public host.
 # Put a TLS reverse proxy in front for cloud use (see README, Hosting in the cloud).
 
@@ -65,6 +65,10 @@ services:
       CORS_ORIGIN: ${PUBLIC_DASHBOARD_URL:-http://localhost:3000}
       ADMIN_EMAIL: ${ADMIN_EMAIL:}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-cnotv-admin}
+      # Seeds 20 hotels and 1,000 robots on an empty database. Remove to start with no fleet.
+      DEMO_FLEET_FILE: /app/demo/hotel-fleet.json
+    volumes:
+      - ./ingestion-service/cmd/simulator/hotel-fleet.json:/app/demo/hotel-fleet.json:ro
     ports: ["${BIND_ADDR:-127.0.0.1}:4000:4000"]
     depends_on:
       redis: { condition: service_healthy }
@@ -87,7 +91,7 @@ services:
     build:
       context: ./ingestion-service
       target: simulator
-    command: ["-url", "ws://ingestion-service:8080", "-n", "1000", "-interval", "1s"]
+    command: ["-url", "ws://ingestion-service:8080", "-interval", "1s"]
     depends_on: [ingestion-service]
 
 volumes:

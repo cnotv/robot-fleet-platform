@@ -10,17 +10,21 @@ import { attachFleetSocket, FLEET_SOCKET_PATH } from './ws.js';
 
 const secret = 'test-secret';
 const token = signToken({ id: 'u1', email: '', role: 'operator', companyId: 'c1' }, secret);
+const viewerToken = signToken({ id: 'u2', email: '', role: 'viewer', companyId: 'c1' }, secret);
 const cached = [JSON.stringify({ robotId: 'rob-v-1' }), JSON.stringify({ robotId: 'rob-v-2' })];
 
 const app = createApp({
-  // Login is not exercised here, so the Prisma client is never touched.
+  // Every request below is answered before a database query, so Prisma is never touched.
   prisma: {} as PrismaClient,
   cache: {
     async hvals(key) {
       assert.equal(key, LIVE_STATE_KEY);
       return cached;
     },
+    async hdel() {},
   },
+  history: async () => [],
+  activity: async () => [],
   jwtSecret: secret,
   corsOrigin: 'http://localhost:3000',
   onError: () => {},
@@ -68,4 +72,23 @@ test('fleet socket handshake succeeds with a token and receives broadcasts', asy
   broadcast([{ robotId: 'rob-v-1' } as RobotState]);
   assert.deepEqual(await received, [{ robotId: 'rob-v-1' }]);
   ws.close();
+});
+
+test('robot writes require the admin or operator role', async () => {
+  const res = await fetch(`http://${base}/api/robots`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${viewerToken}`, 'content-type': 'application/json' },
+    body: '{}',
+  });
+  assert.equal(res.status, 403);
+});
+
+test('robot create rejects an invalid body with a 400 and the reason', async () => {
+  const res = await fetch(`http://${base}/api/robots`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ id: 'Bad Id!' }),
+  });
+  assert.equal(res.status, 400);
+  assert.match(((await res.json()) as { error: string }).error, /^id /);
 });

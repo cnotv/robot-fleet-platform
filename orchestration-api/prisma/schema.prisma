@@ -13,12 +13,37 @@ enum Role {
   viewer
 }
 
+enum RobotKind {
+  cleaning
+  delivery
+  room_service
+  reception
+}
+
 model Company {
   id        String   @id @default(cuid())
   name      String   @unique
   users     User[]
+  sites     Site[]
   robots    Robot[]
   createdAt DateTime @default(now())
+}
+
+// A physical location where robots are deployed, such as one hotel.
+model Site {
+  id        String  @id
+  name      String
+  city      String
+  country   String
+  region    String
+  latitude  Float
+  longitude Float
+  timezone  String
+  robots    Robot[]
+  company   Company @relation(fields: [companyId], references: [id])
+  companyId String
+
+  @@index([companyId])
 }
 
 model User {
@@ -35,15 +60,19 @@ model User {
 
 // Static inventory. Live state lives in Redis, keyed by the same robot id.
 model Robot {
-  id             String   @id
-  serialNumber   String   @unique
+  id             String    @id
+  kind           RobotKind
+  serialNumber   String    @unique
   model          String
   firmware       String
   maxSpeedMps    Float
   batteryWh      Int
-  company        Company  @relation(fields: [companyId], references: [id])
+  site           Site      @relation(fields: [siteId], references: [id])
+  siteId         String
+  company        Company   @relation(fields: [companyId], references: [id])
   companyId      String
-  commissionedAt DateTime @default(now())
+  commissionedAt DateTime  @default(now())
 
   @@index([companyId])
+  @@index([siteId])
 }
