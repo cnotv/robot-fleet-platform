@@ -23,7 +23,11 @@ export interface SeedOptions {
 export async function seedDemoData(prisma: PrismaClient, opts: SeedOptions): Promise<void> {
   const company = await prisma.company.upsert({ where: { name: DEMO_COMPANY }, update: {}, create: { name: DEMO_COMPANY } });
 
-  if (opts.adminEmail && opts.adminPassword && (await prisma.user.count()) === 0) {
+  const noUsers = (await prisma.user.count()) === 0;
+  if (noUsers && !(opts.adminEmail && opts.adminPassword)) {
+    console.warn('no users and no ADMIN_EMAIL and ADMIN_PASSWORD: nobody can sign in until they are set');
+  }
+  if (noUsers && opts.adminEmail && opts.adminPassword) {
     await prisma.user.create({
       data: {
         email: opts.adminEmail.toLowerCase(),

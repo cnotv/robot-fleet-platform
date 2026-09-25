@@ -65,7 +65,8 @@ services:
       MONGO_URL: mongodb://mongodb:27017/fleet
       REDIS_URL: redis://redis:6379
       CORS_ORIGIN: ${PUBLIC_DASHBOARD_URL:-http://localhost:3000}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:}
+      # First admin, created on an empty database. Set both in .env to be able to sign in.
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-cnotv-admin}
       # Seeds 20 hotels and 1,000 robots on an empty database. Remove to start with no fleet.
       DEMO_FLEET_FILE: /app/demo/hotel-fleet.json

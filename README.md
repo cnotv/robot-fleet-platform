@@ -34,7 +34,7 @@ make up
 
 `make up` runs `docker compose --profile apps --profile sim up --build -d`; `make test` runs every test suite. The same images also run on Kubernetes: `make k8s-local` deploys them to a local cluster (see [Kubernetes](https://cnotv.github.io/robot-fleet-platform/operations/kubernetes)).
 
-Open http://localhost:3000 and sign in with `` / `cnotv-admin`. On first boot with an empty database the API creates this admin and seeds the hotels and robots from `ingestion-service/cmd/simulator/hotel-fleet.json`. Override it with `ADMIN_EMAIL` and `ADMIN_PASSWORD`, and set `JWT_SECRET` for anything beyond a laptop.
+Before the first start, copy `.env.example` to `.env` and set `ADMIN_EMAIL` and `ADMIN_PASSWORD`. On first boot with an empty database the API creates that admin and seeds the hotels and robots from `ingestion-service/cmd/simulator/hotel-fleet.json`. Open http://localhost:3000 and sign in with them. Set `JWT_SECRET` for anything beyond a laptop.
 
 ## Working on one service
 
@@ -55,8 +55,10 @@ cd orchestration-api && npm install && npm run db:push && npm run dev
 The API reads `DATABASE_URL`, `MONGO_URL`, `REDIS_URL`, `JWT_SECRET`, `CORS_ORIGIN`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` and `DEMO_FLEET_FILE`. For local runs:
 
 ```bash
-export DATABASE_URL=postgresql://cnotv:cnotv@localhost:5432/fleet MONGO_URL=mongodb://localhost:27017/fleet JWT_SECRET=dev ADMIN_EMAIL= ADMIN_PASSWORD=cnotv-admin DEMO_FLEET_FILE=../ingestion-service/cmd/simulator/hotel-fleet.json
+export DATABASE_URL=postgresql://cnotv:cnotv@localhost:5432/fleet MONGO_URL=mongodb://localhost:27017/fleet JWT_SECRET=dev DEMO_FLEET_FILE=../ingestion-service/cmd/simulator/hotel-fleet.json
 ```
+
+Add `ADMIN_EMAIL` and `ADMIN_PASSWORD` with your own values to create the first admin.
 
 ```bash
 cd fleet-dashboard && npm install && npm run dev

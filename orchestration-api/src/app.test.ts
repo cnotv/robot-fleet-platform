@@ -9,8 +9,8 @@ import { LIVE_STATE_KEY, type RobotState } from './telemetry.js';
 import { attachFleetSocket, FLEET_SOCKET_PATH } from './ws.js';
 
 const secret = 'test-secret';
-const token = signToken({ id: 'u1', email: '', role: 'operator', companyId: 'c1' }, secret);
-const viewerToken = signToken({ id: 'u2', email: '', role: 'viewer', companyId: 'c1' }, secret);
+const token = signToken({ id: 'u1', email: 'operator', role: 'operator', companyId: 'c1' }, secret);
+const viewerToken = signToken({ id: 'u2', email: 'viewer', role: 'viewer', companyId: 'c1' }, secret);
 const cached = [JSON.stringify({ robotId: 'rob-v-1' }), JSON.stringify({ robotId: 'rob-v-2' })];
 
 const app = createApp({

@@ -62,6 +62,7 @@ services:
     environment:
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in deploy/vm/.env}
       DATABASE_URL: postgresql://cnotv:${POSTGRES_PASSWORD}@postgres:5432/fleet
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?set ADMIN_EMAIL in deploy/vm/.env}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in deploy/vm/.env}
       CORS_ORIGIN: https://${FLEET_HOST:?set FLEET_HOST in deploy/vm/.env}
       TELEMETRY_RETENTION_DAYS: ${TELEMETRY_RETENTION_DAYS:-2}

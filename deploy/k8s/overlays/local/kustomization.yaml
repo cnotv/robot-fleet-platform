@@ -15,8 +15,6 @@ secretGenerator:
       - MONGO_URL=mongodb://mongodb:27017/fleet
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=dev-only-change-me
-      - ADMIN_EMAIL=
-      - ADMIN_PASSWORD=cnotv-admin
 configMapGenerator:
   - name: fleet-config
     behavior: merge

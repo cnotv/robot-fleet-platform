@@ -31,6 +31,10 @@ k8s-render: ## Render both overlays; fails on any Kustomize error
 k8s-local: ## Deploy to the current kubectl context (Docker Desktop, OrbStack, minikube; kind: run make kind-load first)
 	$(COMPOSE) build
 	kubectl apply -k $(LOCAL)
+	@# First admin from ADMIN_EMAIL and ADMIN_PASSWORD in .env; no credentials live in the manifests.
+	@if grep -q '^ADMIN_EMAIL=.' .env 2>/dev/null; then \
+	  grep '^ADMIN_' .env | kubectl -n $(K8S_NS) create secret generic fleet-admin --from-env-file=/dev/stdin --dry-run=client -o yaml | kubectl apply -f -; \
+	else echo "No ADMIN_EMAIL in .env: no admin is created. Copy .env.example to .env and set it."; fi
 	kubectl -n $(K8S_NS) rollout status deploy/orchestration-api --timeout=300s
 	@echo "Ready. Run make k8s-forward, then open http://localhost:3000"
 

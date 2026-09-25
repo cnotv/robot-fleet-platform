@@ -85,7 +85,7 @@ The demo fleet file is built into the API image; the local overlay turns seeding
      --from-literal=MONGO_URL=mongodb+srv://... \
      --from-literal=REDIS_URL=rediss://... \
      --from-literal=JWT_SECRET=$(openssl rand -hex 32) \
-     --from-literal=ADMIN_EMAIL= \
+     --from-literal=ADMIN_EMAIL=... \
      --from-literal=ADMIN_PASSWORD=...
    ```
 

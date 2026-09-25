@@ -47,10 +47,12 @@ spec:
           ports:
             - name: http
               containerPort: 4000
-          # fleet-secrets: DATABASE_URL, MONGO_URL, REDIS_URL, JWT_SECRET, and optionally ADMIN_EMAIL, ADMIN_PASSWORD.
+          # fleet-secrets: DATABASE_URL, MONGO_URL, REDIS_URL, JWT_SECRET.
+          # fleet-admin (optional): ADMIN_EMAIL, ADMIN_PASSWORD for the first admin.
           envFrom:
             - configMapRef: { name: fleet-config }
             - secretRef: { name: fleet-secrets }
+            - secretRef: { name: fleet-admin, optional: true }
           readinessProbe:
             httpGet: { path: /healthz, port: http }
             periodSeconds: 5
